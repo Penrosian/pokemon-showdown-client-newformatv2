@@ -779,6 +779,38 @@ export const Moves: import('../sim/dex-moves').MoveDataTable = {
 		zMove: {effect: 'clearnegativeboost'},
 		contestType: "Cute",
 	},
+	auracannon: {
+		num: 10016,
+		accuracy: 95,
+		category: "Special",
+		name: "Aura Cannon",
+		basePower: 130,
+		priority: 0,
+		flags: {protect: 1, mirror: 1, metronome: 1, pulse: 1},
+		target: "normal",
+		type: "Fighting",
+		pp: 5,
+		onAfterHit(source, target, move) {
+			this.debug("Aura Cannon recharge check")
+			if (!target.fainted) {
+				source.addVolatile('mustrecharge');
+				this.debug("Aura Cannon recharge")
+			}
+		},
+	},
+	auramaelstrom: {
+		num: 10015,
+		accuracy: 80,
+		category: "Special",
+		name: "Aura Maelstrom",
+		pp: 10,
+		basePower: 25,
+		multihit: [5],
+		priority: 0,
+		flags: {protect:1, mirror: 1, metronome: 1, bullet: 1},
+		target: "allAdjacent",
+		type: "Fighting"
+	},
 	aurasphere: {
 		num: 396,
 		accuracy: true,
@@ -1926,6 +1958,52 @@ export const Moves: import('../sim/dex-moves').MoveDataTable = {
 		target: "normal",
 		type: "Water",
 		contestType: "Tough",
+	},
+	brittlebolt: {
+		num: 205,
+		accuracy: 90,
+		basePower: 50,
+		basePowerCallback(pokemon, target, move) {
+			let bp = move.basePower;
+			const brittleboltData = pokemon.volatiles['brittlebolt'];
+			if (brittleboltData?.hitCount) {
+				bp += 40 * brittleboltData.hitCount;
+			}
+			if (brittleboltData && pokemon.status !== 'slp') {
+				brittleboltData.hitCount++;
+				brittleboltData.duration = 2;
+			}
+			this.debug("BP: " + bp);
+			move.priority -= 1;
+			return bp;
+		},
+		category: "Special",
+		name: "Brittle Bolt",
+		pp: 10,
+		priority: 2,
+		flags: {protect: 1, mirror: 1, metronome: 1},
+		onModifyMove(move, pokemon, target) {
+			if (pokemon.volatiles['brittlebolt'] || pokemon.status === 'slp' || !target) return;
+			pokemon.addVolatile('brittlebolt');
+			// @ts-ignore
+			// TS thinks pokemon.volatiles['rollout'] doesn't exist because of the condition on the return above
+			// but it does exist now because addVolatile created it
+			pokemon.volatiles['brittlebolt'].targetSlot = move.sourceEffect ? pokemon.lastMoveTargetLoc : pokemon.getLocOf(target);
+		},
+		condition: {
+			duration: 1,
+			onStart() {
+				this.effectState.hitCount = 0;
+			},
+			onResidual(target) {
+				if (target.lastMove && target.lastMove.id === 'struggle') {
+					// don't lock
+					delete target.volatiles['brittlebolt'];
+				}
+			},
+		},
+		type: "Electric",
+		target: "normal"
 	},
 	brutalswing: {
 		num: 693,
@@ -3508,6 +3586,23 @@ export const Moves: import('../sim/dex-moves').MoveDataTable = {
 		target: "allAdjacentFoes",
 		type: "Fairy",
 		contestType: "Beautiful",
+	},
+	deadaimstone: {
+		num: 10013,
+		accuracy: true,
+		priority: 1,
+		name: "Dead-Aim Stone",
+		basePower: 80,
+		category: "Physical",
+		type: "Rock",
+		pp: 10,
+		flags: {protect:1, mirror: 1, metronome: 1},
+		secondary: null,
+		target: "normal",
+		onEffectiveness(typeMod, target, type, move) {
+			if (type === 'Psychic') return 3;
+			if (type === 'Fighting') return 1;
+		},
 	},
 	decorate: {
 		num: 777,
@@ -5770,6 +5865,27 @@ export const Moves: import('../sim/dex-moves').MoveDataTable = {
 		maxMove: {basePower: 130},
 		contestType: "Cute",
 	},
+	flamingcollision: {
+		num: 10009,
+		accuracy: 90,
+		basePower: 100,
+		category: "Physical",
+		name: "Flaming Collision",
+		pp: 5,
+		priority: 0,
+		flags: {protect: 1, mirror: 1, metronome: 1, contact: 1},
+		secondary: null,
+		target: "normal",
+		type: "Fire",
+		boosts: {
+			def: -1
+		},
+		self: {
+			boosts: {
+				def: -1
+			}
+		}
+	},
 	flameburst: {
 		num: 481,
 		accuracy: 100,
@@ -6513,6 +6629,34 @@ export const Moves: import('../sim/dex-moves').MoveDataTable = {
 		zMove: {basePower: 160},
 		maxMove: {basePower: 130},
 		contestType: "Cute",
+	},
+	fueledbreak: {
+		num:10007,
+		accuracy: 100,
+		basePower: 55,
+		pp: 15,
+		flags: {contact: 1, protect: 1, mirror: 1, metronome: 1},
+		name: "Fueled Break",
+		target: "normal",
+		type: "Fire",
+		secondary: null,
+		priority: 0,
+		category: "Physical",
+		onAfterHit(source, target, move) {
+			if (target.fainted) {
+				source.setStatus('brn', source)
+				source.boostBy({atk: 4})
+				source.addVolatile('fueledbreak')
+			}
+		},
+		condition: {
+			onStart(target, source, effect) {
+					this.add('-start', target, 'move: Fueled Break');
+			},
+			onModifyCritRatio(critRatio) {
+				return critRatio + 2;
+			},
+		},
 	},
 	furyattack: {
 		num: 31,
@@ -9405,6 +9549,58 @@ export const Moves: import('../sim/dex-moves').MoveDataTable = {
 		target: "normal",
 		type: "Water",
 		contestType: "Beautiful",
+	},
+	hydroreboot: {
+		onHit(target, source, move) {
+			let activate = false;
+			let boosts: SparseBoostsTable = {};
+			let i: BoostID;
+			let b = 0;
+			let factor = 25;
+			for (i in target.boosts) {
+				if (target.boosts[i] > 0) {
+					b += target.boosts[i]
+					target.boosts[i] = 0
+				};
+			}
+			if (b > 0) {
+				factor = 0.3334;
+				//@ts-ignore
+				move.self.boosts = {
+					def: 1,
+					spd: 1
+				};
+			}
+			if (b > 2) factor = 0.6667;
+			if (b > 4) {
+				factor = 1;
+				//@ts-ignore
+				move.self.boosts = {
+					def: 2,
+					spd: 2
+				};
+				target.clearStatus;
+				target.setBoost(boosts);
+				this.add('-clearnegativeboost', target, '[silent]');
+			}
+			const success = !!this.heal(this.modify(target.maxhp, factor));
+			if (!success) {
+				this.add('-fail', target, 'heal');
+				return this.NOT_FAIL;
+			}
+			return success;
+		},
+		num: 10012,
+		accuracy: true,
+		basePower: 0,
+		pp: 10,
+		category: "Status",
+		flags: {mirror: 1, metronome: 1},
+		type: "Water",
+		target: "self",
+		priority: 0,
+		secondary: null,
+		name: "Hydro Reboot"
 	},
 	hydrosteam: {
 		num: 876,
@@ -12374,6 +12570,31 @@ export const Moves: import('../sim/dex-moves').MoveDataTable = {
 		type: "Fire",
 		contestType: "Cool",
 	},
+	mindbreaker: {
+		num: 10018,
+		accuracy: 100,
+		basePower: 0,
+		category: "Status",
+		name: "Mind Breaker",
+		pp: 15,
+		priority: 0,
+		flags: {mirror: 1, metronome: 1, sound: 1, bypasssub: 1},
+		target: "normal",
+		type: "Psychic",
+		volatileStatus: "mindbreaker",
+		condition: {
+			onStart(target, source, sourceEffect) {
+				this.effectState.damage = 0;
+				let i: BoostID;
+				for (i in target.boosts) {
+					if (target.boosts[i] < 0) target.volatiles['mindbreaker'].damage -= target.boosts[i];
+				}
+			},
+			onResidual(target, source, effect) {
+				target.damage(target.maxhp*target.volatiles['mindbreaker'].damage/12)
+			},
+		}
+	},
 	mindreader: {
 		num: 170,
 		accuracy: true,
@@ -12888,6 +13109,25 @@ export const Moves: import('../sim/dex-moves').MoveDataTable = {
 			}
 		},
 	},
+	mountainbreaker: {
+		num: 10008,
+		accuracy: 100,
+		basePower: 165,
+		category: "Special",
+		name: "Mountain Breaker",
+		pp: 5,
+		priority: 0,
+		flags: {protect: 1, mirror: 1, metronome: 1},
+		target: "allAdjacent",
+		type: "Ground",
+		onEffectiveness(typeMod, target, type, move) {
+			if (type === 'Flying') return 1 + this.dex.getEffectiveness('Flying', type) ;	
+			else return typeMod + this.dex.getEffectiveness('Flying', type);	
+		},
+		onModifyMove(move, pokemon) {
+			if (pokemon.getStat('atk', false, true) > pokemon.getStat('spa', false, true)) move.category = 'Physical';
+		}
+	},
 	mountaingale: {
 		num: 836,
 		accuracy: 85,
@@ -13038,13 +13278,23 @@ export const Moves: import('../sim/dex-moves').MoveDataTable = {
 		contestType: "Tough",
 	},
 	multislash: {
-		multihit: [4, 6],
 		num: 10003,
 		name: "Multi-Slash",
 		accuracy: 100,
 		basePower: 10,
+		onPrepareHit(target, source, move) {
+			let cmhr = Math.floor( Math.random() * 11 );
+			let cmh = 0;
+			source.addVolatile('multislash');
+			if (cmhr < 4) cmh = 4;
+			else if (cmhr < 8) cmh = 5;
+			else cmh = 6;
+			move.multihit = [cmh];
+			source.volatiles['multislash'].cmh = cmh;
+		},
 		basePowerCallback(pokemon, target, move) {
-			if (move.hit === 6) {
+			if (move.hit === pokemon.volatiles['multislash'].cmh) {
+				move.willCrit = undefined;
 				return 35;
 			}
 			else {
@@ -13058,6 +13308,7 @@ export const Moves: import('../sim/dex-moves').MoveDataTable = {
 		flags: {contact: 1},
 		priority: 0,
 		critRatio: 2,
+		condition: {}
 	},
 	mysticalfire: {
 		num: 595,
@@ -13402,6 +13653,25 @@ export const Moves: import('../sim/dex-moves').MoveDataTable = {
 		type: "Electric",
 		contestType: "Cute",
 	},
+	obliterationpunch: {
+		basePowerCallback(pokemon, target, move) {
+			if (pokemon.boosts.atk > -1) {
+				let b = pokemon.boosts.atk;
+				pokemon.boosts.atk = 0;
+				return 85 + 55 * b;
+			} else return 85;
+		},
+		num: 10015,
+		accuracy: 100,
+		category: "Physical",
+		flags: {contact: 1, protect: 1, metronome: 1, mirror: 1, punch: 1},
+		pp: 5,
+		name: "Obliteration Punch",
+		basePower: 85,
+		target: "normal",
+		type: "Fighting",
+		priority: 0
+	},
 	oblivionwing: {
 		num: 613,
 		accuracy: 100,
@@ -13690,6 +13960,22 @@ export const Moves: import('../sim/dex-moves').MoveDataTable = {
 		type: "Fire",
 		contestType: "Beautiful",
 	},
+	overwork: {
+		num: 10015,
+		accuracy: true,
+		basePower: 0,
+		category: "Status",
+		name: "Overwork",
+		pp: 5,
+		priority: 0,
+		flags: {mirror: 1, metronome: 1, recharge: 1},
+		boosts: {
+			atk: 3,
+			def: 2
+		},
+		target: "self",
+		type: "Fighting",
+	},
 	painsplit: {
 		num: 220,
 		accuracy: true,
@@ -13713,26 +13999,6 @@ export const Moves: import('../sim/dex-moves').MoveDataTable = {
 		type: "Normal",
 		zMove: {boost: {def: 1}},
 		contestType: "Clever",
-	},
-	paleowave: {
-		num: 0,
-		accuracy: 100,
-		basePower: 85,
-		category: "Special",
-		isNonstandard: "CAP",
-		name: "Paleo Wave",
-		pp: 15,
-		priority: 0,
-		flags: {protect: 1, mirror: 1},
-		secondary: {
-			chance: 20,
-			boosts: {
-				atk: -1,
-			},
-		},
-		target: "normal",
-		type: "Rock",
-		contestType: "Beautiful",
 	},
 	paraboliccharge: {
 		num: 570,
@@ -14003,6 +14269,24 @@ export const Moves: import('../sim/dex-moves').MoveDataTable = {
 		target: "normal",
 		type: "Electric",
 		contestType: "Cool",
+	},
+	plasmasphere: {
+		num: 10010,
+		accuracy: 100,
+		basePower: 90,
+		category: "Physical",
+		name: "Plasma Sphere",
+		pp: 10,
+		priority: 0,
+		flags: {contact: 1, protect: 1, mirror: 1, metronome: 1},
+		onPrepareHit(target, source, move) {
+			target = source.side.foe.active[source.side.foe.active.length - 1 - source.position];
+		},
+		onBasePower(relayVar, source, target, move) {
+			if (!(this.gameType === 'singles')) return this.chainModify(105, 90);
+		},
+	    type: "Electric",
+		target: "opposite"
 	},
 	playnice: {
 		num: 589,
@@ -14853,6 +15137,24 @@ export const Moves: import('../sim/dex-moves').MoveDataTable = {
 		target: "normal",
 		type: "Psychic",
 		contestType: "Cool",
+	},
+	psychopathicpunch: {
+		num: 10016,
+		accuracy: 100,
+		basePower: 85,
+		category: "Physical",
+		name: "Psychopathic Punch",
+		pp: 10,
+		priority: 0,
+		flags: {protect: 1, mirror: 1, metronome: 1, contact: 1, punch: 1},
+		target: "normal",
+		type: "Psychic",
+		onEffectiveness(typeMod, target, type, move) {
+			return typeMod + this.dex.getEffectiveness('Dark', type);
+		},
+		onAfterHit(source, target, move) {
+			source.types = ["Dark"]
+		},
 	},
 	psychoshift: {
 		num: 375,
@@ -16004,6 +16306,39 @@ export const Moves: import('../sim/dex-moves').MoveDataTable = {
 		type: "Rock",
 		contestType: "Clever",
 	},
+	rockwall: {
+		num: 10014,
+		accuracy: true,
+		basePower: 0,
+		category: "Status",
+		pp: 15,
+		onTry(source) {
+			if (source.activeMoveActions > 1) {
+				this.hint("Rock Wall only works on your first turn out.");
+				return false;
+			}
+		},
+		priority: 3,
+		flags: {mirror: 1, metronome: 1},
+		name: "Rock Wall",
+		type: "Rock",
+		target: "self",
+		volatileStatus: "rockwall",
+		condition: {
+			duration: 2,
+			onDisableMove(pokemon) {
+				for (const moveSlot of pokemon.moveSlots) {
+					const move = this.dex.moves.get(moveSlot.id);
+					if (move.category === 'Physical' || move.category === 'Special') {
+						pokemon.disableMove(moveSlot.id);
+					}
+				}
+			},
+			onTryHit() {
+				return null;
+			}
+		}
+	},
 	rockwrecker: {
 		num: 439,
 		accuracy: 90,
@@ -16392,6 +16727,31 @@ export const Moves: import('../sim/dex-moves').MoveDataTable = {
 		zMove: {boost: {evasion: 1}},
 		contestType: "Cute",
 	},
+	sandcamoflage: {
+		num: 10008,
+		accuracy: true,
+		basePower: 0,
+		category: "Status",
+		name: "Sand Camoflage",
+		pp: 10,
+		target: "self",
+		priority: 0,
+		flags: {mirror: 1, metronome: 1},
+		secondary: null,
+		type: "Ground",
+		volatileStatus: 'sandcamoflage',
+		condition: {
+			onStart(target, source, effect) {
+					this.add('-start', target, 'move: Sand Camoflage');
+			},
+			onModifyAccuracy(relayVar, target, source, move) {
+				if (!(move.accuracy === true) && move.accuracy < 100) {
+					move.accuracy /= 1.5
+				}
+			},
+			onCriticalHit: false
+		},
+	},
 	sandsearstorm: {
 		num: 848,
 		accuracy: 80,
@@ -16536,6 +16896,29 @@ export const Moves: import('../sim/dex-moves').MoveDataTable = {
 		type: "Normal",
 		zMove: {boost: {spe: 1}},
 		contestType: "Tough",
+	},
+	scorchingdagger: {
+		num: 10007,
+		accuracy: 100,
+		basePower: 120,
+		category: "Physical",
+		name: "Scorching Dagger",
+		pp: 5,
+		priority: 0,
+		flags: {contact: 1, mirror: 1, defrost: 1, protect: 1, metronome: 1},
+		thawsTarget: true,
+		target: "normal",
+		type: "Fire",
+		mindBlownRecoil: true,
+		onAfterMove(pokemon, target, move) {
+			if (move.mindBlownRecoil && !move.multihit && !(target.status == 'brn')) {
+				const hpBeforeRecoil = pokemon.hp;
+				this.damage(Math.round(pokemon.maxhp * 0.4), pokemon, pokemon, this.dex.conditions.get('Scorching Dagger'), true);
+				if (pokemon.hp <= pokemon.maxhp * 0.4 && hpBeforeRecoil > pokemon.maxhp * 0.4) {
+					this.runEvent('EmergencyExit', pokemon, pokemon);
+				}
+			}
+		},
 	},
 	scorchingsands: {
 		num: 815,
@@ -16855,26 +17238,6 @@ export const Moves: import('../sim/dex-moves').MoveDataTable = {
 		priority: 1,
 		flags: {contact: 1, protect: 1, mirror: 1, metronome: 1},
 		secondary: null,
-		target: "normal",
-		type: "Ghost",
-		contestType: "Clever",
-	},
-	shadowstrike: {
-		num: 0,
-		accuracy: 95,
-		basePower: 80,
-		category: "Physical",
-		isNonstandard: "CAP",
-		name: "Shadow Strike",
-		pp: 10,
-		priority: 0,
-		flags: {contact: 1, protect: 1, mirror: 1},
-		secondary: {
-			chance: 50,
-			boosts: {
-				def: -1,
-			},
-		},
 		target: "normal",
 		type: "Ghost",
 		contestType: "Clever",
@@ -17822,6 +18185,19 @@ export const Moves: import('../sim/dex-moves').MoveDataTable = {
 		type: "Steel",
 		contestType: "Cool",
 	},
+	smashingstrike: {
+		num: 1005,
+		accuracy: 100,
+		basePower: 100,
+		category: "Physical",
+		name: "Smashing Strike",
+		pp: 10,
+		priority: 0,
+		flags: {contact:1, protect: 1, mirror: 1, metronome: 1},
+		secondary: null,
+		type: "Normal",
+		target: "normal"
+	},
 	smellingsalts: {
 		num: 265,
 		accuracy: 100,
@@ -17881,6 +18257,29 @@ export const Moves: import('../sim/dex-moves').MoveDataTable = {
 		type: "Normal",
 		zMove: {boost: {evasion: 1}},
 		contestType: "Clever",
+	},
+	smolderingshot: {
+		num: 10006,
+		accuracy: 90,
+		basePower: 70,
+		category: "Special",
+		name: "Smoldering Shot",
+		pp: 10,
+		priority: 0,
+		flags: {protect: 1, mirror: 1, metronome: 1},
+		secondary: null,
+		target: "normal",
+		type: "Fire",
+		willCrit: false,
+		onModifyMove(move, pokemon, target) {
+			if (Math.floor( Math.random() * 25 ) == 1) {
+				move.willCrit = true,
+				move.secondary = {
+					chance: 100,
+					status: 'brn',
+				}
+			}
+		},
 	},
 	snaptrap: {
 		num: 779,
@@ -18956,6 +19355,23 @@ export const Moves: import('../sim/dex-moves').MoveDataTable = {
 		type: "Rock",
 		contestType: "Tough",
 	},
+	stoneswing: {
+		num: 10014,
+		accuracy: 90,
+		basePower: 130,
+		category: "Physical",
+		target: "normal",
+		flags: {metronome: 1, mirror: 1, contact: 1, protect: 1},
+		type: "Rock",
+		priority: 0,
+		pp: 5,
+		name: "Stone Swing",
+		self: {
+			boosts: {
+				atk: -2
+			}
+		}
+	},
 	storedpower: {
 		num: 500,
 		accuracy: 100,
@@ -19295,6 +19711,8 @@ export const Moves: import('../sim/dex-moves').MoveDataTable = {
             switch (pokemon.effectiveWeather()) {
             case 'sunnyday':
             case 'desolateland':
+				// @ts-ignore
+				// ts thinks move.self.boosts can be null, when it never can because the move it is referencing has this.
                 move.self.boosts = {atk: 1, spa: 1} ;
                 break;
             }
@@ -20085,6 +20503,22 @@ export const Moves: import('../sim/dex-moves').MoveDataTable = {
 		type: "Psychic",
 		zMove: {boost: {spa: 1}},
 		contestType: "Clever",
+	},
+	telekineticthrow: {
+		num: 10017,
+		accuracy: true,
+		basePower: 145,
+		category: "Special",
+		name: "Telekinetic Throw",
+		pp: 5,
+		priority: -6,
+		flags: {metronome: 1, mirror: 1, protect: 1, recharge: 1, noassist: 1, failcopycat: 1},
+		self: {
+			volatileStatus: 'mustrecharge'
+		},
+		forceSwitch: true,
+		target: "normal",
+		type: "Psychic",
 	},
 	teleport: {
 		num: 100,
@@ -21304,6 +21738,18 @@ export const Moves: import('../sim/dex-moves').MoveDataTable = {
 		type: "Normal",
 		contestType: "Cute",
 	},
+	velocaqua: {
+		num: 10011,
+		accuracy: 100,
+		basePower: 75,
+		pp: 10,
+		priority: 0.1,
+		type: "Water",
+		target: "normal",
+		flags: {mirror:1, protect:1, metronome:1, contact: 1},
+		name: "Veloc-aqua",
+		category: "Physical"
+	},
 	venomdrench: {
 		num: 599,
 		accuracy: 100,
@@ -21362,6 +21808,23 @@ export const Moves: import('../sim/dex-moves').MoveDataTable = {
 		secondary: null,
 		target: "self",
 		type: "Fighting",
+	},
+	victorypull: {
+		num: 10014,
+		accuracy: 100,
+		basePower: 75,
+		category: "Physical",
+		name: "Victory Pull",
+		pp: 10,
+		priority: 0,
+		flags: {contact: 1, protect: 1, mirror: 1, metronome: 1},
+		target: "normal",
+		type: "Fighting",
+		onAfterHit(source, target, move) {
+			if (target.fainted) {
+				source.boostBy({atk: 1, def: 1})
+			}
+		},
 	},
 	vinewhip: {
 		num: 22,
@@ -22256,5 +22719,48 @@ export const Moves: import('../sim/dex-moves').MoveDataTable = {
 		target: "normal",
 		type: "Electric",
 		contestType: "Cool",
+	},
+
+	// CAP moves
+
+	paleowave: {
+		num: 0,
+		accuracy: 100,
+		basePower: 85,
+		category: "Special",
+		isNonstandard: "CAP",
+		name: "Paleo Wave",
+		pp: 15,
+		priority: 0,
+		flags: {protect: 1, mirror: 1},
+		secondary: {
+			chance: 20,
+			boosts: {
+				atk: -1,
+			},
+		},
+		target: "normal",
+		type: "Rock",
+		contestType: "Beautiful",
+	},
+	shadowstrike: {
+		num: 0,
+		accuracy: 95,
+		basePower: 80,
+		category: "Physical",
+		isNonstandard: "CAP",
+		name: "Shadow Strike",
+		pp: 10,
+		priority: 0,
+		flags: {contact: 1, protect: 1, mirror: 1},
+		secondary: {
+			chance: 50,
+			boosts: {
+				def: -1,
+			},
+		},
+		target: "normal",
+		type: "Ghost",
+		contestType: "Clever",
 	},
 };
