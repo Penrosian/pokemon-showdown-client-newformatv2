@@ -129,7 +129,7 @@ Config.whitelist = [
 	// music
 	'plug.dj',
 	'openings.moe',
-    'animethemes.moe',
+	'animethemes.moe',
 	'catbox.moe',
 
 	// images
